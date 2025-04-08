@@ -1,6 +1,5 @@
 rustFlakeInputs:
 { inputs, self, pkgs, lib, flake-parts-lib, ... }:
-
 let
   inherit (flake-parts-lib)
     mkPerSystemOption;
@@ -28,7 +27,6 @@ in
                 };
               });
             };
-
             crane-lib = lib.mkOption {
               type = lib.types.lazyAttrsOf lib.types.raw;
               description = ''
@@ -51,18 +49,15 @@ in
                 Based on the `rust-toolchain.toml` file in the flake directory
               '';
             };
-
             crateNixFile = lib.mkOption {
               type = lib.types.nullOr lib.types.str;
               description = ''
                 The Nix file to import automatically if it exists in the
                 crate directory.
-
                 By default, nothing is automagically imported.
               '';
               default = null;
             };
-
             src = lib.mkOption {
               type = lib.types.path;
               description = "Source directory for the rust-project package";
@@ -79,7 +74,6 @@ in
                 Files in this flake (`self`) filtered by crane
               '';
             };
-
             cargoToml = lib.mkOption {
               type = lib.types.attrsOf lib.types.raw;
               description = ''
@@ -89,12 +83,6 @@ in
               defaultText = lib.literalExpression ''
                 fromTOML (readFile (self + "/Cargo.toml"))
               '';
-            };
-            # Add a new option for enabling cargo audit
-            enableAudit = lib.mkOption {
-              type = lib.types.bool;
-              description = "Whether to enable cargo audit checks";
-              default = true;
             };
             # Add a new option for the advisory database
             advisoryDb = lib.mkOption {
@@ -109,30 +97,27 @@ in
           nixpkgs.overlays = [
             (import rustFlakeInputs.rust-overlay)
           ];
-
-          # lib.mapAttrs over config.rust-project.crates returning its outputs.packages (combined)
-          packages =
-            lib.mkMerge
-              (lib.mapAttrsToList
-                (name: crate: crate.crane.outputs.packages)
-                config.rust-project.crates);
-
-          checks = lib.mkMerge
-            (lib.mapAttrsToList
-              (name: crate: 
-                let
-                  baseChecks = crate.crane.outputs.checks;
-                  # Add cargo audit check if enabled
-                  auditCheck = lib.optionalAttrs config.rust-project.enableAudit {
-                    "${name}-audit" = config.rust-project.crane-lib.cargoAudit {
-                      src = crate.src;
-                      advisory-db = config.rust-project.advisoryDb;
-                    };
-                  };
-                in
-                baseChecks // auditCheck
-              )
-              config.rust-project.crates);
+          # Collect all packages from crates
+          packages = 
+            let
+              # Collect all packages from all crates
+              allPackages = lib.foldl' (acc: name:
+                let crate = config.rust-project.crates.${name};
+                in acc // crate.crane.outputs.packages
+              ) {} (lib.attrNames config.rust-project.crates);
+            in
+            allPackages;
+          
+          # Collect all checks from crates
+          checks = 
+            let
+              # Collect all checks from all crates
+              allChecks = lib.foldl' (acc: name:
+                let crate = config.rust-project.crates.${name};
+                in acc // crate.crane.outputs.checks
+              ) {} (lib.attrNames config.rust-project.crates);
+            in
+            allChecks;
         };
       });
   };
