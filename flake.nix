@@ -5,8 +5,12 @@
     rust-overlay.url = "github:oxalica/rust-overlay";
     rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
     crane.url = "github:ipetkov/crane";
+    advisory-db = {
+      url = "github:rustsec/advisory-db";
+      flake = false;
+    };
   };
-  outputs = { rust-overlay, crane, ... }:
+  outputs = { rust-overlay, crane, advisory-db, ... }:
     let
       # Preserve name and key of the module file for dedup and error message locations
       import' =
@@ -19,7 +23,7 @@
     in
     {
       flakeModules = {
-        default = import' ./nix/modules/flake-module.nix { inherit rust-overlay crane; };
+        default = import' ./nix/modules/flake-module.nix { inherit rust-overlay crane advisory-db; };
         nixpkgs = ./nix/modules/nixpkgs.nix;
       };
       nixci.default =

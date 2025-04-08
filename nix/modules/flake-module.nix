@@ -90,6 +90,18 @@ in
                 fromTOML (readFile (self + "/Cargo.toml"))
               '';
             };
+            # Add a new option for enabling cargo audit
+            enableAudit = lib.mkOption {
+              type = lib.types.bool;
+              description = "Whether to enable cargo audit checks";
+              default = true;
+            };
+            # Add a new option for the advisory database
+            advisoryDb = lib.mkOption {
+              type = lib.types.path;
+              description = "Path to the RustSec advisory database";
+              default = rustFlakeInputs.advisory-db;
+            };
           };
         };
         config = {
@@ -107,7 +119,19 @@ in
 
           checks = lib.mkMerge
             (lib.mapAttrsToList
-              (name: crate: crate.crane.outputs.checks)
+              (name: crate: 
+                let
+                  baseChecks = crate.crane.outputs.checks;
+                  # Add cargo audit check if enabled
+                  auditCheck = lib.optionalAttrs config.rust-project.enableAudit {
+                    "${name}-audit" = config.rust-project.crane-lib.cargoAudit {
+                      src = crate.src;
+                      advisory-db = config.rust-project.advisoryDb;
+                    };
+                  };
+                in
+                baseChecks // auditCheck
+              )
               config.rust-project.crates);
         };
       });

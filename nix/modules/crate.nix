@@ -30,7 +30,7 @@
     };
     autoWire =
       let
-        outputTypes = [ "crate" "doc" "clippy" ];
+        outputTypes = [ "crate" "doc" "clippy" "audit" ];
       in
       lib.mkOption {
         type = lib.types.listOf (lib.types.enum outputTypes);
@@ -69,10 +69,11 @@
       };
 
       clippy.enable = lib.mkEnableOption "Add flake check for cargo clippy" // { default = true; };
+      audit.enable = lib.mkEnableOption "Add flake check for cargo audit" // { default = true; };
 
       outputs =
         let
-          inherit (rust-project) toolchain src crane-lib;
+          inherit (rust-project) toolchain src crane-lib advisoryDb;
           inherit (config) crane cargoToml;
 
           name = cargoToml.package.name;
@@ -116,6 +117,15 @@
                 description = "Rust docs for the ${name} crate";
               };
             });
+
+            # Add cargo audit check
+            audit = crane-lib.cargoAudit {
+              inherit src;
+              advisory-db = advisoryDb;
+              meta = {
+                description = "Cargo audit check for the ${name} crate";
+              };
+            };
           };
         in
         {
@@ -136,6 +146,12 @@
               type = lib.types.package;
               description = "The Nix package for the Rust crate clippy check";
               default = craneBuild.check;
+              defaultText = lib.literalMD "_computed with crane_";
+            };
+            audit = lib.mkOption {  # Added audit option
+              type = lib.types.package;
+              description = "The Nix package for the Rust crate audit check";
+              default = craneBuild.audit;
               defaultText = lib.literalMD "_computed with crane_";
             };
           };
@@ -164,13 +180,21 @@
           checks = lib.mkOption {
             type = lib.types.lazyAttrsOf lib.types.package;
             description = "All Nix flake checks for the Rust crate";
-            default = lib.optionalAttrs (lib.elem "clippy" config.autoWire && crane.clippy.enable) {
-              "${name}-clippy" = config.crane.outputs.drv.clippy;
-            };
+            default = lib.mergeAttrs
+              (lib.optionalAttrs (lib.elem "clippy" config.autoWire && crane.clippy.enable) {
+                "${name}-clippy" = config.crane.outputs.drv.clippy;
+              })
+              (lib.optionalAttrs (lib.elem "audit" config.autoWire && crane.audit.enable) {  # Added audit check
+                "${name}-audit" = config.crane.outputs.drv.audit;
+              });
             defaultText = lib.literalExample ''
-              optionalAttrs (elem "clippy" config.autoWire && crane.clippy.enable) {
-                "''${name}-clippy" = config.crane.outputs.drv.clippy;
-              }
+              lib.mergeAttrs
+                (optionalAttrs (elem "clippy" config.autoWire && crane.clippy.enable) {
+                  "''${name}-clippy" = config.crane.outputs.drv.clippy;
+                })
+                (optionalAttrs (elem "audit" config.autoWire && crane.audit.enable) {
+                  "''${name}-audit" = config.crane.outputs.drv.audit;
+                })
             '';
           };
         };
